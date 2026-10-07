@@ -29,7 +29,7 @@ st.write(
 # FastAPI URL
 # --------------------------------------------------
 
-API_URL = "http://127.0.0.1:8000/analyze"
+API_URL = "https://ai-cybersecurity-api.onrender.com/analyze"
 
 
 # --------------------------------------------------
