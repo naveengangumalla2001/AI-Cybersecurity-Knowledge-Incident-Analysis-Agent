@@ -1,5 +1,17 @@
+import sys
+from pathlib import Path
+
 import streamlit as st
-import requests
+
+
+# Add project root to Python path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+from app.agent.graph import build_graph
 
 
 # --------------------------------------------------
@@ -14,6 +26,13 @@ st.set_page_config(
 
 
 # --------------------------------------------------
+# Build LangGraph Agent
+# --------------------------------------------------
+
+agent = build_graph()
+
+
+# --------------------------------------------------
 # Title
 # --------------------------------------------------
 
@@ -23,13 +42,6 @@ st.write(
     "Analyze cybersecurity incidents using "
     "RAG, LangGraph, Gemini, and Pydantic."
 )
-
-
-# --------------------------------------------------
-# FastAPI URL
-# --------------------------------------------------
-
-API_URL = "https://ai-cybersecurity-api.onrender.com/analyze"
 
 
 # --------------------------------------------------
@@ -68,217 +80,175 @@ if st.button("🔍 Analyze Incident", type="primary"):
 
             try:
 
-                # Send request to FastAPI
-                response = requests.post(
-                    API_URL,
-                    json={
-                        "incident": incident
-                    },
-                    timeout=120
+                # --------------------------------------------------
+                # Run LangGraph Agent Directly
+                # --------------------------------------------------
+
+                result = agent.invoke(
+                    {
+                        "incident": incident,
+                        "context": "",
+                        "analysis": {}
+                    }
+                )
+
+                # Get final structured analysis
+                analysis = result["analysis"]
+
+                # --------------------------------------------------
+                # Success Message
+                # --------------------------------------------------
+
+                st.success(
+                    "Incident analysis completed successfully!"
                 )
 
                 # --------------------------------------------------
-                # Successful Response
+                # Incident Type
                 # --------------------------------------------------
 
-                if response.status_code == 200:
+                st.subheader("🚨 Incident Type")
 
-                    result = response.json()
-
-                    st.success(
-                        "Incident analysis completed successfully!"
+                st.write(
+                    analysis.get(
+                        "incident_type",
+                        "Not available"
                     )
+                )
 
-                    # --------------------------------------------------
-                    # Incident Type
-                    # --------------------------------------------------
+                # --------------------------------------------------
+                # Severity
+                # --------------------------------------------------
 
-                    st.subheader("🚨 Incident Type")
+                st.subheader("⚠️ Severity")
 
-                    st.write(
-                        result.get(
-                            "incident_type",
-                            "Not available"
-                        )
-                    )
-
-                    # --------------------------------------------------
-                    # Severity
-                    # --------------------------------------------------
-
-                    st.subheader("⚠️ Severity")
-
-                    severity = result.get(
+                st.write(
+                    analysis.get(
                         "severity",
                         "Not available"
                     )
+                )
 
-                    st.write(severity)
+                # --------------------------------------------------
+                # Threat Explanation
+                # --------------------------------------------------
 
-                    # --------------------------------------------------
-                    # Threat Explanation
-                    # --------------------------------------------------
+                st.subheader("🔎 Threat Explanation")
 
-                    st.subheader("🔎 Threat Explanation")
+                st.write(
+                    analysis.get(
+                        "threat_explanation",
+                        "Not available"
+                    )
+                )
+
+                # --------------------------------------------------
+                # Evidence
+                # --------------------------------------------------
+
+                st.subheader("📋 Evidence")
+
+                evidence = analysis.get(
+                    "evidence",
+                    []
+                )
+
+                if evidence:
+
+                    for item in evidence:
+
+                        st.markdown(
+                            f"- {item}"
+                        )
+
+                else:
 
                     st.write(
-                        result.get(
-                            "threat_explanation",
-                            "Not available"
-                        )
+                        "No evidence identified."
                     )
 
-                    # --------------------------------------------------
-                    # Evidence
-                    # --------------------------------------------------
+                # --------------------------------------------------
+                # Recommended Defensive Actions
+                # --------------------------------------------------
 
-                    st.subheader("📋 Evidence")
+                st.subheader(
+                    "🛡️ Recommended Defensive Actions"
+                )
 
-                    evidence = result.get(
-                        "evidence",
-                        []
-                    )
+                actions = analysis.get(
+                    "recommended_actions",
+                    []
+                )
 
-                    if evidence:
+                if actions:
 
-                        for item in evidence:
-
-                            st.markdown(
-                                f"- {item}"
-                            )
-
-                    else:
-
-                        st.write(
-                            "No evidence identified."
-                        )
-
-                    # --------------------------------------------------
-                    # Recommended Actions
-                    # --------------------------------------------------
-
-                    st.subheader(
-                        "🛡️ Recommended Defensive Actions"
-                    )
-
-                    actions = result.get(
-                        "recommended_actions",
-                        []
-                    )
-
-                    if actions:
-
-                        for index, action in enumerate(
-                            actions,
-                            start=1
-                        ):
-
-                            st.markdown(
-                                f"{index}. {action}"
-                            )
-
-                    else:
-
-                        st.write(
-                            "No recommendations available."
-                        )
-
-                    # --------------------------------------------------
-                    # Raw JSON
-                    # --------------------------------------------------
-
-                    with st.expander(
-                        "View Structured JSON Output"
+                    for index, action in enumerate(
+                        actions,
+                        start=1
                     ):
 
-                        st.json(result)
+                        st.markdown(
+                            f"{index}. {action}"
+                        )
+
+                else:
+
+                    st.write(
+                        "No recommendations available."
+                    )
 
                 # --------------------------------------------------
-                # Quota Error
+                # Structured JSON
                 # --------------------------------------------------
 
-                elif response.status_code == 429:
+                with st.expander(
+                    "View Structured JSON Output"
+                ):
+
+                    st.json(analysis)
+
+            # --------------------------------------------------
+            # Error Handling
+            # --------------------------------------------------
+
+            except Exception as e:
+
+                error_message = str(e)
+
+                # Print error in Streamlit Cloud logs
+                print("\n========== ERROR ==========")
+                print("Error Type:", type(e))
+                print("Error Message:", error_message)
+                print("===========================\n")
+
+                # Gemini quota error
+                if (
+                    "429" in error_message
+                    or "RESOURCE_EXHAUSTED" in error_message
+                ):
 
                     st.error(
                         "Gemini API quota exceeded. "
-                        "Please try again after the quota resets."
+                        "Please try again later."
                     )
 
-                # --------------------------------------------------
-                # Gemini Service Error
-                # --------------------------------------------------
-
-                elif response.status_code == 503:
+                # Gemini service unavailable
+                elif (
+                    "503" in error_message
+                    or "UNAVAILABLE" in error_message
+                ):
 
                     st.error(
                         "Gemini service is temporarily "
                         "unavailable. Please try again later."
                     )
 
-                # --------------------------------------------------
-                # Bad Request
-                # --------------------------------------------------
-
-                elif response.status_code == 400:
-
-                    st.warning(
-                        "Incident description cannot be empty."
-                    )
-
-                # --------------------------------------------------
-                # Other API Errors
-                # --------------------------------------------------
-
+                # Other errors
                 else:
 
-                    try:
-
-                        error = response.json()
-
-                        st.error(
-                            error.get(
-                                "detail",
-                                "An error occurred."
-                            )
-                        )
-
-                    except Exception:
-
-                        st.error(
-                            f"API Error: {response.status_code}"
-                        )
-
-            # --------------------------------------------------
-            # FastAPI Connection Error
-            # --------------------------------------------------
-
-            except requests.exceptions.ConnectionError:
-
-                st.error(
-                    "Could not connect to FastAPI. "
-                    "Please make sure the FastAPI server is running."
-                )
-
-            # --------------------------------------------------
-            # Timeout Error
-            # --------------------------------------------------
-
-            except requests.exceptions.Timeout:
-
-                st.error(
-                    "The request took too long. "
-                    "Please try again."
-                )
-
-            # --------------------------------------------------
-            # Unexpected Error
-            # --------------------------------------------------
-
-            except Exception as e:
-
-                st.error(
-                    f"Unexpected error: {str(e)}"
-                )
+                    st.error(
+                        f"Analysis failed: {error_message}"
+                    )
 
 
 # --------------------------------------------------
